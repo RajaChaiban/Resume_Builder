@@ -1,7 +1,9 @@
 // Composes the full career visualization from a CareerProfile.
 import { motion } from 'framer-motion';
 import type { CareerProfile } from '../lib/types';
+import { mapMode } from '../lib/region';
 import Globe from './Globe';
+import UsMap from './UsMap';
 import Timeline from './Timeline';
 import SkillsPanel from './SkillsPanel';
 import AIEraPanel from './AIEraPanel';
@@ -41,7 +43,11 @@ export default function ProfileView({ profile }: { profile: CareerProfile }) {
 
       <div className="profile-grid">
         <div className="globe-col">
-          <Globe profile={profile} />
+          {mapMode(profile) === 'us' ? (
+            <UsMap profile={profile} />
+          ) : (
+            <Globe profile={profile} />
+          )}
         </div>
         <div className="panels-col">
           <SkillsPanel skills={profile.skills} />

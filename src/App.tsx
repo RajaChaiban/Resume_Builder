@@ -68,11 +68,22 @@ function App() {
 
       <div className="app-inner">
         <div className="hero-band">
-          <div className="brand">RESUME&nbsp;→&nbsp;FUTURE</div>
-          <p className="brand-sub">
-            Upload your resume and watch your career rendered as a journey into the AI era.
-          </p>
-          <Uploader onFiles={handleFiles} disabled={status === 'loading'} />
+          <div className="hero-mesh" aria-hidden="true">
+            <span className="hero-orb hero-orb-1" />
+            <span className="hero-orb hero-orb-2" />
+            <span className="hero-orb hero-orb-3" />
+          </div>
+          <div className="hero-content">
+            <div className="hero-eyebrow">
+              <span className="hero-eyebrow-dot" />
+              Local&nbsp;·&nbsp;Private&nbsp;·&nbsp;Runs entirely in your browser
+            </div>
+            <div className="brand">RESUME&nbsp;→&nbsp;FUTURE</div>
+            <p className="brand-sub">
+              Upload your resume and watch your career rendered as a journey into the AI era.
+            </p>
+            <Uploader onFiles={handleFiles} disabled={status === 'loading'} />
+          </div>
         </div>
 
         <ProfileView profile={profile} />

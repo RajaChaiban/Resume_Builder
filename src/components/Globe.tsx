@@ -4,13 +4,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import GlobeGL, { type GlobeMethods } from 'react-globe.gl';
 import * as THREE from 'three';
-import type { CareerProfile, Era } from '../lib/types';
-
-const ERA_COLOR: Record<Era, string> = {
-  'pre-ai': '#64748b',
-  transition: '#38bdf8',
-  'ai-era': '#a855f7',
-};
+import type { CareerProfile } from '../lib/types';
+import { ERA_COLOR } from '../lib/eras';
 
 interface PointDatum {
   lat: number;
@@ -68,16 +63,18 @@ export default function Globe({ profile }: { profile: CareerProfile }) {
     return { points, arcs };
   }, [profile]);
 
-  // A self-lit, textureless globe so nothing is loaded from the network.
+  // A self-lit, textureless globe so nothing is loaded from the network. The
+  // emissive blue keeps the sphere clearly visible against the dark backdrop —
+  // a near-black material here reads as empty space, not a globe.
   const globeMaterial = useMemo(
     () =>
       new THREE.MeshPhongMaterial({
-        color: '#0b1024',
-        emissive: '#0a0e26',
-        emissiveIntensity: 0.9,
-        shininess: 6,
+        color: '#172554',
+        emissive: '#1e3a8a',
+        emissiveIntensity: 0.55,
+        shininess: 12,
         transparent: true,
-        opacity: 0.95,
+        opacity: 0.98,
       }),
     [],
   );
