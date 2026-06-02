@@ -42,12 +42,21 @@ interface ArcDatum {
   color: [string, string];
 }
 
+// Journey choreography: each role is revealed in turn, ~STEP_MS apart, while the
+// globe pans to the new city and the arc from the previous role draws in.
+const STEP_MS = 780;
+const prefersReduced =
+  typeof window !== 'undefined' &&
+  window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+
 export default function Globe({ profile }: { profile: CareerProfile }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const globeRef = useRef<GlobeMethods | undefined>(undefined);
   const [size, setSize] = useState({ w: 600, h: 460 });
   const [hovered, setHovered] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
+  // How many roles of the journey have been revealed so far.
+  const [revealed, setRevealed] = useState(0);
 
   // Keep the canvas sized to its container.
   useEffect(() => {
@@ -104,17 +113,47 @@ export default function Globe({ profile }: { profile: CareerProfile }) {
     [],
   );
 
-  // Keep the globe still — the user drags to rotate it — and frame the most
-  // recent role so there's a sensible starting view.
+  // Play the journey: reveal each role in turn, panning the globe to the new
+  // city while the arc from the previous role draws in. The user can drag to
+  // rotate at any point; the intro only runs once per profile.
   useEffect(() => {
     const g = globeRef.current;
-    if (!g) return;
-    const controls = g.controls();
-    controls.autoRotate = false;
-    controls.enableZoom = true;
-    const last = [...profile.nodes].reverse().find((n) => n.location)?.location;
-    if (last) g.pointOfView({ lat: last.lat, lng: last.lng, altitude: 2.2 }, 1200);
-  }, [profile]);
+    if (g) {
+      const controls = g.controls();
+      controls.autoRotate = false;
+      controls.enableZoom = true;
+    }
+    if (points.length === 0) {
+      setRevealed(0);
+      return;
+    }
+    const focus = (i: number, ms: number) => {
+      const p = points[i];
+      if (p && globeRef.current)
+        globeRef.current.pointOfView({ lat: p.lat, lng: p.lng, altitude: 2.2 }, ms);
+    };
+    if (prefersReduced) {
+      setRevealed(points.length);
+      focus(points.length - 1, 0);
+      return;
+    }
+    setRevealed(1);
+    focus(0, 900);
+    let i = 1;
+    let timer: ReturnType<typeof setTimeout>;
+    const advance = () => {
+      i += 1;
+      setRevealed(i);
+      focus(i - 1, STEP_MS * 0.85);
+      if (i < points.length) timer = setTimeout(advance, STEP_MS);
+    };
+    timer = setTimeout(advance, STEP_MS);
+    return () => clearTimeout(timer);
+  }, [points]);
+
+  // Only the revealed leg of the journey is drawn, so it traces out in order.
+  const shownPoints = points.slice(0, revealed);
+  const shownArcs = arcs.slice(0, Math.max(0, revealed - 1));
 
   const capColor = (name: string) => {
     if (name === selected) return CAP_SELECTED;
@@ -167,7 +206,7 @@ export default function Globe({ profile }: { profile: CareerProfile }) {
           setSelected((cur) => (cur === name ? null : name));
         }}
         polygonsTransitionDuration={250}
-        pointsData={points}
+        pointsData={shownPoints}
         pointLat="lat"
         pointLng="lng"
         pointColor="color"
@@ -175,16 +214,18 @@ export default function Globe({ profile }: { profile: CareerProfile }) {
         pointRadius={(d) => (d as PointDatum).size}
         pointLabel="label"
         pointsMerge={false}
-        arcsData={arcs}
+        pointsTransitionDuration={450}
+        arcsData={shownArcs}
         arcStartLat="startLat"
         arcStartLng="startLng"
         arcEndLat="endLat"
         arcEndLng="endLng"
         arcColor="color"
-        arcStroke={0.5}
-        arcDashLength={0.4}
-        arcDashGap={0.15}
-        arcDashAnimateTime={2200}
+        arcStroke={0.6}
+        arcDashLength={1}
+        arcDashGap={0}
+        arcDashAnimateTime={0}
+        arcsTransitionDuration={STEP_MS * 0.85}
         arcAltitudeAutoScale={0.4}
       />
 
