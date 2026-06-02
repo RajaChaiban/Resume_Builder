@@ -25,6 +25,36 @@ function looksLikeName(line: string): boolean {
   return words.every((w) => /^[A-Z][a-zA-Z.'-]+$/.test(w));
 }
 
+// A "City, ST" or "City, Country" tail that resume lines park at the right edge.
+const LOCATION_TAIL_RE =
+  /([A-Z][A-Za-z.\s'-]+,\s*(?:[A-Z]{2}|[A-Z]\.[A-Z]\.|[A-Z][a-zA-Z.]+))\s*$/;
+
+/** Strip a trailing "City, ST" location and a trailing date range off a line. */
+function stripTail(line: string): string {
+  return line
+    .replace(DATE_RANGE_RE, '')
+    .replace(LOCATION_TAIL_RE, '')
+    .replace(/[\s|,·–—-]+$/, '')
+    .trim();
+}
+
+// Resume section headers are short, (mostly) uppercase, digit-free lines.
+function sectionOf(line: string): string | null {
+  const t = line.trim();
+  if (t.length > 42 || /\d/.test(t)) return null;
+  const letters = t.replace(/[^A-Za-z]/g, '');
+  if (letters.length < 4) return null;
+  const upperRatio = (t.replace(/[^A-Z]/g, '').length || 0) / letters.length;
+  if (upperRatio < 0.7) return null;
+  if (/experience|employment|work history/i.test(t)) return 'experience';
+  if (/education|academic/i.test(t)) return 'education';
+  if (/skill|technical|competenc/i.test(t)) return 'skills';
+  if (/project/i.test(t)) return 'projects';
+  if (/leadership|involvement|volunteer|activit|award|certif|language|additional|reference|interest|hobb/i.test(t))
+    return 'other';
+  return null; // an uppercase line that isn't a known header (e.g. an employer)
+}
+
 /** Pull a clean list of highlight bullets near an entry. */
 function bulletsFrom(lines: string[]): string[] {
   return lines
@@ -46,23 +76,56 @@ export function extractProfile(text: string, fallbackName = 'Your Name'): Career
     url: url.startsWith('http') ? url : `https://${url}`,
   }));
 
-  // --- experience: split text into blocks around date ranges ---
+  // --- experience: section-aware, two-column-aware block parsing ---
+  // Real resumes use a two-column layout where the employer and date range share
+  // one line and the role + "City, ST" share the next. We only mine the WORK
+  // EXPERIENCE section so education/leadership date ranges don't become "jobs".
   const nodes: CareerNode[] = [];
+  let section: string | null = null; // null until the first header is seen
+  let sawExperienceHeader = false;
+
+  const nextNonEmpty = (from: number): number => {
+    for (let j = from; j < lines.length; j++) if (lines[j]) return j;
+    return -1;
+  };
+
   for (let i = 0; i < lines.length; i++) {
-    const m = lines[i].match(DATE_RANGE_RE);
+    const line = lines[i];
+    if (!line) continue;
+    const header = sectionOf(line);
+    if (header) {
+      section = header;
+      if (header === 'experience') sawExperienceHeader = true;
+      continue;
+    }
+    // Only mine roles inside WORK EXPERIENCE. If a resume has no recognizable
+    // header at all, fall back to scanning everything (section stays null).
+    if (sawExperienceHeader && section !== 'experience') continue;
+
+    const m = line.match(DATE_RANGE_RE);
     if (!m) continue;
     const startYear = parseYear(m[2]);
     const endYear = parseYear(m[4]);
     if (endYear < startYear) continue;
 
-    // Look at the surrounding window for role / employer / location.
-    const ctx = lines.slice(Math.max(0, i - 2), i + 6).filter(Boolean);
-    const labelLines = ctx.filter((l) => !DATE_RANGE_RE.test(l));
-    const role = labelLines[0] ?? 'Role';
-    const employer = (labelLines[1] ?? labelLines[0] ?? 'Company').replace(/[|,].*$/, '').trim();
-    const blockText = ctx.join(' ');
-    const location =
-      geocode(ctx.find((l) => /[A-Z][a-z]+,\s*[A-Z]/.test(l))) ?? findCityInText(blockText);
+    // This line carries the date range -> it's the employer line. The role +
+    // location live on the next non-empty line in this layout.
+    const employer = stripTail(line) || 'Company';
+    const roleIdx = nextNonEmpty(i + 1);
+    const roleLine = roleIdx >= 0 ? lines[roleIdx] : '';
+
+    // Resolve the location from the role line (then the employer line, then any
+    // known city in the block). geocode() pulls the real city out of a phrase.
+    const block = lines.slice(i, roleIdx >= 0 ? roleIdx + 6 : i + 6).filter(Boolean);
+    const blockText = block.join(' ');
+    const location = geocode(roleLine) ?? geocode(line) ?? findCityInText(blockText);
+
+    // The role is the role-line text up to where the city name begins (role and
+    // "City, ST" run together once the PDF's two columns are flattened).
+    let role = roleLine;
+    const cityAt = location ? roleLine.toLowerCase().indexOf(location.city.toLowerCase()) : -1;
+    if (cityAt > 0) role = roleLine.slice(0, cityAt);
+    role = stripTail(role) || 'Role';
 
     nodes.push({
       id: `n${nodes.length}`,
@@ -74,7 +137,7 @@ export function extractProfile(text: string, fallbackName = 'Your Name'): Career
       endYear,
       location,
       summary: undefined,
-      highlights: bulletsFrom(ctx.slice(1)),
+      highlights: bulletsFrom(block.slice(2)),
       skills: extractSkills(blockText).map((s) => s.name).slice(0, 6),
       aiRelevance: Math.max(aiScore(blockText), eraForYear(endYear) === 'ai-era' ? 0.4 : 0.1),
       era: eraForYear(endYear),

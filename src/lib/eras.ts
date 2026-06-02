@@ -2,8 +2,17 @@
 // chapter reads the same color wherever it appears.
 import type { Era } from './types';
 
+// Earthy "paper" progression: taupe → teal → terracotta. Earliest chapters are
+// muted, the present/AI era reads warm.
 export const ERA_COLOR: Record<Era, string> = {
-  'pre-ai': '#64748b',
-  transition: '#38bdf8',
-  'ai-era': '#a855f7',
+  'pre-ai': '#a08e76',
+  transition: '#3f8079',
+  'ai-era': '#bf6336',
+};
+
+// Human-readable labels for the legend.
+export const ERA_LABEL: Record<Era, string> = {
+  'pre-ai': 'Early career',
+  transition: 'Transition',
+  'ai-era': 'AI era',
 };

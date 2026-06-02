@@ -37,9 +37,10 @@ last must be `}`. It must parse with `JSON.parse`.
       "end": string,               // "Present" or e.g. "2023"
       "startYear": number,         // numeric year
       "endYear": number,           // numeric; resolve "Present" to 2026
-      "location": {                // null if unknown
+      "location": {                // null ONLY if no place can be inferred
         "city": string,
-        "country": string,
+        "state": string | null,    // 2-letter US state code (e.g. "NY"); null if non-US
+        "country": string,         // "USA" for US roles; full country name otherwise
         "lat": number,             // decimal degrees
         "lng": number
       } | null,
@@ -60,13 +61,41 @@ last must be `}`. It must parse with `JSON.parse`.
 
 ## Rules
 
-- **Geocode each role's location yourself** — fill `lat`/`lng` with real decimal
-  coordinates for the city. If a role's location is unknown, set `location` to
-  `null`.
+### Capturing every role (most important)
+- **Extract EVERY position in the WORK EXPERIENCE / EMPLOYMENT section — never
+  drop one.** If there are four jobs, return four `nodes`. Missing a role is the
+  single worst failure mode here.
+- Resumes use a **two-column layout that flattens into one stream of text**: the
+  **employer name and the date range usually sit on the same line**, and the
+  **job title and the "City, ST" (or "City, Country") usually sit on the very
+  next line**. Read them as that pair. Example flattened text:
+  `RentLevy January 2020 – December 2023` then
+  `Vice President of Operations Dubai, UAE` → employer `RentLevy`, role
+  `Vice President of Operations`, location Dubai, UAE.
+- Do NOT turn EDUCATION, PROJECTS, CERTIFICATIONS, or LEADERSHIP entries into
+  `nodes` — only real jobs. (Their date ranges are not employment.)
+
+### Geocoding each location (always try)
+- **Geocode every role yourself** — fill `lat`/`lng` with real decimal degrees
+  for the city. Only set `location` to `null` if the text gives no place at all.
+- For **US roles**: set `country` to `"USA"` and always fill the 2-letter
+  `state`. Map the city to its real coordinates, e.g.:
+  - `Gainesville, FL` → `{ "city":"Gainesville","state":"FL","country":"USA","lat":29.6516,"lng":-82.3248 }`
+  - `Albany, NY` → `{ "city":"Albany","state":"NY","country":"USA","lat":42.6526,"lng":-73.7562 }`
+  - `Orlando, FL` → `{ "city":"Orlando","state":"FL","country":"USA","lat":28.5383,"lng":-81.3792 }`
+  - `Washington, D.C.` → `{ "city":"Washington","state":"DC","country":"USA","lat":38.9072,"lng":-77.0369 }`
+- For **international roles**: use the full country name and `state: null`, e.g.:
+  - `Dubai, UAE` → `{ "city":"Dubai","state":null,"country":"UAE","lat":25.2048,"lng":55.2708 }`
+  - `Beirut, LB` → `{ "city":"Beirut","state":null,"country":"Lebanon","lat":33.8938,"lng":35.5018 }`
+- If only a country (no city) is given, use the country's centroid coordinates.
+
+### Everything else
 - **Era classification by `endYear`:** `< 2017` → `"pre-ai"`,
   `2017`–`2022` → `"transition"`, `>= 2023` → `"ai-era"`.
 - **`aiRelevance`** reflects how much AI / ML / data / automation the role
   involved (0 = none, 1 = pure frontier AI work).
+- Populate `skills` (8–14 items) for the CAPABILITIES panel and a forward-looking
+  `aiEra` for the AI-era panel — both are required, never empty.
 - Sort `nodes` oldest → newest. Use sequential ids `n0`, `n1`, …
 - Keep `highlights` concise and impact-focused; rewrite weak bullets.
 - If the resume is sparse, infer reasonable values rather than leaving fields

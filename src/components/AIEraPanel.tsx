@@ -5,7 +5,7 @@ import type { CareerProfile } from '../lib/types';
 export default function AIEraPanel({ aiEra }: { aiEra: CareerProfile['aiEra'] }) {
   return (
     <div className="panel aiera-panel">
-      <h2 className="section-title">The AI Era</h2>
+      <h2 className="section-title">Specialization</h2>
       <div className="aiera-role">{aiEra.projectedRole}</div>
       {aiEra.narrative && <p className="aiera-narrative">{aiEra.narrative}</p>}
       {aiEra.augmentations.length > 0 && (

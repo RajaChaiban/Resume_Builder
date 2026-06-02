@@ -50,11 +50,20 @@ export default function Uploader({ onFiles, disabled }: Props) {
           <path d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2" strokeLinecap="round" />
         </svg>
       </div>
-      <div className="uploader-title">Drop your resume or cover letter</div>
-      <div className="uploader-sub">
-        or <span>browse files</span> — PDF, DOCX, TXT. Add both for a richer story.
+      <div className="uploader-title">
+        {drag ? 'Release to read it' : 'Drop your résumé here'}
       </div>
-      <div className="uploader-note">Everything is parsed locally in your browser.</div>
+      <div className="uploader-sub">
+        or <span>browse files</span> — parsed locally, never uploaded
+      </div>
+      <div className="uploader-chips">
+        {['PDF', 'DOCX', 'TXT'].map((f) => (
+          <span className="uploader-chip" key={f}>
+            {f}
+          </span>
+        ))}
+      </div>
+      <div className="uploader-note">Add a cover letter too for a richer story.</div>
     </motion.div>
   );
 }

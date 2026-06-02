@@ -6,6 +6,7 @@ export type Era = 'pre-ai' | 'transition' | 'ai-era';
 export interface GeoLocation {
   city: string;
   country?: string;
+  state?: string; // 2-letter US state code when known (e.g. "NY")
   lat: number;
   lng: number;
 }

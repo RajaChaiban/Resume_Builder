@@ -9,7 +9,8 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",
-    "build:us-geo": "node scripts/build-us-geo.mjs"
+    "build:us-geo": "node scripts/build-us-geo.mjs",
+    "build:world-geo": "node scripts/build-world-geo.mjs"
   },
   "dependencies": {
     "framer-motion": "^12.40.0",
@@ -37,6 +38,7 @@
     "typescript-eslint": "^8.59.2",
     "us-atlas": "^3.0.1",
     "vite": "^8.0.12",
-    "vitest": "^4.1.8"
+    "vitest": "^4.1.8",
+    "world-atlas": "^2.0.2"
   }
 }

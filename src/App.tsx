@@ -6,7 +6,6 @@ import { extractProfile } from './lib/extract';
 import { parseClaudeProfile } from './lib/claudeProfile';
 import { SAMPLE_PROFILE } from './lib/sample';
 import type { CareerProfile } from './lib/types';
-import Starfield from './components/Starfield';
 import Uploader from './components/Uploader';
 import Loader from './components/Loader';
 import ProfileView from './components/ProfileView';
@@ -64,27 +63,34 @@ function App() {
 
   return (
     <div className="app">
-      <Starfield />
+      <div className="bg" aria-hidden="true" />
+      <span className="orb v" aria-hidden="true" />
+      <span className="orb c" aria-hidden="true" />
 
       <div className="app-inner">
-        <div className="hero-band">
-          <div className="hero-mesh" aria-hidden="true">
-            <span className="hero-orb hero-orb-1" />
-            <span className="hero-orb hero-orb-2" />
-            <span className="hero-orb hero-orb-3" />
-          </div>
-          <div className="hero-content">
-            <div className="hero-eyebrow">
-              <span className="hero-eyebrow-dot" />
-              Local&nbsp;·&nbsp;Private&nbsp;·&nbsp;Runs entirely in your browser
+        <section className="hero-band">
+          <div className="hero-inner">
+            <div className="pill hero-eyebrow">
+              <span className="pulse-dot" /> A RÉSUMÉ, REIMAGINED
             </div>
-            <div className="brand">RESUME&nbsp;→&nbsp;FUTURE</div>
+            <h1 className="brand">
+              Interactive <span className="accent-word">Résumé</span>
+            </h1>
+            <div className="hero-rule" />
             <p className="brand-sub">
-              Upload your resume and watch your career rendered as a journey into the AI era.
+              Turn a résumé into a living document — every role mapped across the
+              globe, every capability scored, and a look at where you go next.
             </p>
             <Uploader onFiles={handleFiles} disabled={status === 'loading'} />
+            <div className="hero-foot">
+              <span>100% offline</span>
+              <span className="dot-sep">·</span>
+              <span>No account</span>
+              <span className="dot-sep">·</span>
+              <span>Nothing leaves your device</span>
+            </div>
           </div>
-        </div>
+        </section>
 
         <ProfileView profile={profile} />
       </div>

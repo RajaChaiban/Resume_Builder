@@ -44,11 +44,13 @@ export function parseClaudeProfile(jsonText: string): CareerProfile {
     const loc = n.location as Record<string, unknown> | string | undefined;
     let location;
     if (loc && typeof loc === 'object' && 'lat' in loc) {
+      const lo = loc as Record<string, unknown>;
       location = {
-        city: str((loc as Record<string, unknown>).city, 'Unknown'),
-        country: str((loc as Record<string, unknown>).country) || undefined,
-        lat: num((loc as Record<string, unknown>).lat, 0),
-        lng: num((loc as Record<string, unknown>).lng, 0),
+        city: str(lo.city, 'Unknown'),
+        country: str(lo.country) || undefined,
+        state: str(lo.state) || undefined,
+        lat: num(lo.lat, 0),
+        lng: num(lo.lng, 0),
       };
     } else if (typeof loc === 'string') {
       location = geocode(loc);

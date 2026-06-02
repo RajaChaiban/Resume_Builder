@@ -1,11 +1,13 @@
 // Flat US map shown when an entire career is US-based. Renders state outlines,
-// an era-colored dot per located role, and animated arcs tracing the journey
-// between consecutive roles — the 2D counterpart to <Globe/>. Fully offline:
-// state geometry is vendored at src/lib/us-states.geo.json.
-import { useMemo } from 'react';
+// an era-colored dot per worked city, and animated arcs tracing the journey
+// between consecutive roles — the 2D counterpart to <Globe/>. Clicking a dot
+// opens a description of the role(s) worked there, mirroring the globe's
+// country panel. Fully offline: state geometry is vendored at
+// src/lib/us-states.geo.json.
+import { useMemo, useState } from 'react';
 import { geoAlbersUsa, geoPath } from 'd3-geo';
 import type { FeatureCollection, MultiPolygon, Polygon } from 'geojson';
-import type { CareerProfile, Era } from '../lib/types';
+import type { CareerNode, CareerProfile, Era } from '../lib/types';
 import { ERA_COLOR } from '../lib/eras';
 import rawStatesGeo from '../lib/us-states.geo.json';
 
@@ -25,12 +27,14 @@ const STATE_PATHS = statesGeo.features
   .map((f) => pathGen(f))
   .filter((d): d is string => d != null);
 
-interface Plotted {
+interface CityDot {
+  key: string;
+  name: string; // "Gainesville, FL"
   x: number;
   y: number;
   era: Era;
   r: number;
-  label: string;
+  roles: CareerNode[];
 }
 
 interface Arc {
@@ -41,36 +45,57 @@ interface Arc {
 }
 
 export default function UsMap({ profile }: { profile: CareerProfile }) {
-  const { dots, arcs } = useMemo(() => {
-    const dots: Plotted[] = [];
+  const [selected, setSelected] = useState<string | null>(null);
+
+  const { cityDots, arcs } = useMemo(() => {
+    // Per-node projected points drive the journey arcs.
+    const pts: { x: number; y: number; node: CareerNode }[] = [];
     for (const n of profile.nodes) {
       if (!n.location) continue;
       const xy = projection([n.location.lng, n.location.lat]);
       if (!xy) continue; // outside the AlbersUsa frame
-      dots.push({
-        x: xy[0],
-        y: xy[1],
-        era: n.era,
-        r: 4 + n.aiRelevance * 7,
-        label: `${n.role} · ${n.employer} (${n.location.city})`,
-      });
+      pts.push({ x: xy[0], y: xy[1], node: n });
     }
+
     const arcs: Arc[] = [];
-    for (let i = 1; i < dots.length; i++) {
-      const a = dots[i - 1];
-      const b = dots[i];
+    for (let i = 1; i < pts.length; i++) {
+      const a = pts[i - 1];
+      const b = pts[i];
+      if (a.x === b.x && a.y === b.y) continue; // same city — no visible arc
       const len = Math.hypot(b.x - a.x, b.y - a.y);
       const mx = (a.x + b.x) / 2;
       const my = (a.y + b.y) / 2 - len * 0.28; // bow the arc upward
       arcs.push({
         d: `M${a.x},${a.y} Q${mx},${my} ${b.x},${b.y}`,
-        from: a.era,
-        to: b.era,
+        from: a.node.era,
+        to: b.node.era,
         id: `arc-${i}`,
       });
     }
-    return { dots, arcs };
+
+    // Group roles by city so a single dot can describe every role worked there.
+    const byCity = new Map<string, CityDot>();
+    for (const p of pts) {
+      const loc = p.node.location!;
+      const key = `${loc.city}|${loc.state ?? loc.country ?? ''}`;
+      const name = loc.state ? `${loc.city}, ${loc.state}` : loc.city;
+      const existing = byCity.get(key);
+      if (existing) {
+        existing.roles.push(p.node);
+      } else {
+        byCity.set(key, { key, name, x: p.x, y: p.y, era: p.node.era, r: 0, roles: [p.node] });
+      }
+    }
+    const cityDots = [...byCity.values()].map((d) => {
+      const latest = d.roles[d.roles.length - 1];
+      const maxAi = Math.max(...d.roles.map((n) => n.aiRelevance));
+      return { ...d, era: latest.era, r: 4 + maxAi * 7 };
+    });
+
+    return { cityDots, arcs };
   }, [profile]);
+
+  const selectedDot = selected ? cityDots.find((d) => d.key === selected) : undefined;
 
   return (
     <div className="us-map-wrap">
@@ -97,16 +122,64 @@ export default function UsMap({ profile }: { profile: CareerProfile }) {
         </g>
 
         <g className="us-dots">
-          {dots.map((p, i) => (
-            <g key={i} transform={`translate(${p.x},${p.y})`}>
-              <circle className="us-dot-halo" r={p.r * 2.2} fill={ERA_COLOR[p.era]} />
-              <circle r={p.r} fill={ERA_COLOR[p.era]}>
-                <title>{p.label}</title>
-              </circle>
-            </g>
-          ))}
+          {cityDots.map((p) => {
+            const active = p.key === selected;
+            return (
+              <g
+                key={p.key}
+                transform={`translate(${p.x},${p.y})`}
+                className={`us-dot ${active ? 'active' : ''}`}
+                onClick={() => setSelected((cur) => (cur === p.key ? null : p.key))}
+                role="button"
+                aria-label={`${p.name} — ${p.roles.length} role${p.roles.length > 1 ? 's' : ''}`}
+              >
+                {active && (
+                  <circle className="us-dot-ring" r={p.r + 6} fill="none" stroke={ERA_COLOR[p.era]} />
+                )}
+                <circle className="us-dot-halo" r={p.r * 2.2} fill={ERA_COLOR[p.era]} />
+                <circle r={p.r} fill={ERA_COLOR[p.era]}>
+                  <title>
+                    {p.name} — {p.roles.length} role{p.roles.length > 1 ? 's' : ''}
+                  </title>
+                </circle>
+              </g>
+            );
+          })}
         </g>
       </svg>
+
+      {selectedDot && (
+        <aside className="country-card">
+          <header className="country-card-head">
+            <span className="country-card-name">{selectedDot.name}</span>
+            <button
+              className="country-card-close"
+              onClick={() => setSelected(null)}
+              aria-label="Close"
+            >
+              ×
+            </button>
+          </header>
+          <ul className="country-card-roles">
+            {selectedDot.roles.map((n) => (
+              <li key={n.id} className={`country-role era-${n.era}`}>
+                <div className="country-role-title">{n.role}</div>
+                <div className="country-role-meta">
+                  {n.employer} · {n.location!.city} · {n.start} – {n.end}
+                </div>
+                {n.summary && <p className="country-role-summary">{n.summary}</p>}
+                {n.highlights.length > 0 && (
+                  <ul className="country-role-highlights">
+                    {n.highlights.slice(0, 3).map((h, i) => (
+                      <li key={i}>{h}</li>
+                    ))}
+                  </ul>
+                )}
+              </li>
+            ))}
+          </ul>
+        </aside>
+      )}
     </div>
   );
 }

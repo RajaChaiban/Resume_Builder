@@ -11,10 +11,7 @@ export default function SkillsPanel({ skills }: { skills: SkillStat[] }) {
         {skills.map((s, i) => (
           <div key={s.name} className={`skill ${s.aiAligned ? 'ai' : ''}`}>
             <div className="skill-head">
-              <span className="skill-name">
-                {s.name}
-                {s.aiAligned && <span className="skill-tag">AI</span>}
-              </span>
+              <span className="skill-name">{s.name}</span>
               <span className="skill-pct">{Math.round(s.level * 100)}%</span>
             </div>
             <div className="skill-bar">
