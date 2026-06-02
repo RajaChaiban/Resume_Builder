@@ -1,9 +1,14 @@
 // Flat 2D world map ("Atlas") — the pannable/zoomable counterpart to the 3D
 // globe, shown via the Globe/Atlas tab for international careers. Same data as
 // the globe: worked countries are highlighted, era-colored points mark each
-// role, arcs trace the journey, and clicking a worked country opens the same
-// description card. Fully offline (country geometry vendored in worldRegion.ts).
+// role, and clicking a worked country opens the same description card.
+//
+// The journey auto-plays on load: the arcs between jobs draw one-by-one in
+// chronological order and each dot pops in as the path reaches it, tracing the
+// person's movement from role to role. A replay control re-runs the sequence.
+// Fully offline (country geometry vendored in worldRegion.ts).
 import { useMemo, useRef, useState } from 'react';
+import { motion, useReducedMotion } from 'framer-motion';
 import { geoNaturalEarth1, geoPath } from 'd3-geo';
 import type { CareerNode, CareerProfile, Era } from '../lib/types';
 import { ERA_COLOR } from '../lib/eras';
@@ -25,25 +30,49 @@ const K_MIN = 1;
 const K_MAX = 6;
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
+// Journey choreography. Each leg gets STEP seconds; a dot pops in at the start
+// of its step and the arc leaving it draws across the gap to the next dot.
+const STEP = 0.85;
+const DOT_POP = 0.4;
+const ARC_DUR = 0.7;
+
+interface DotDatum {
+  x: number;
+  y: number;
+  era: Era;
+  r: number;
+}
+interface ArcDatum {
+  d: string;
+  from: Era;
+  to: Era;
+  id: string;
+  srcIndex: number; // index of the dot this arc departs from
+}
+
 export default function WorldAtlas({ profile }: { profile: CareerProfile }) {
   const [selected, setSelected] = useState<string | null>(null);
   const [view, setView] = useState({ k: 1, panX: 0, panY: 0 });
+  // Bumping playId remounts the journey layer, which restarts the animation.
+  const [playId, setPlayId] = useState(0);
   const svgRef = useRef<SVGSVGElement>(null);
   const drag = useRef<{ x: number; y: number; moved: boolean } | null>(null);
+  const reduce = useReducedMotion();
 
-  // Reset pan/zoom + selection when a new profile loads (render-time sync,
-  // React's recommended alternative to a setState-in-effect).
+  // Reset pan/zoom + selection and replay the journey when a new profile loads
+  // (render-time sync, React's recommended alternative to a setState-in-effect).
   const [prevProfile, setPrevProfile] = useState(profile);
   if (profile !== prevProfile) {
     setPrevProfile(profile);
     setView({ k: 1, panX: 0, panY: 0 });
     setSelected(null);
+    setPlayId((n) => n + 1);
   }
 
   const rolesMap = useMemo(() => rolesByCountry(profile), [profile]);
 
   const { points, arcs } = useMemo(() => {
-    const pts: { x: number; y: number; era: Era; r: number }[] = [];
+    const pts: DotDatum[] = [];
     const proj: [number, number][] = [];
     const eras: Era[] = [];
     for (const n of profile.nodes) {
@@ -54,7 +83,7 @@ export default function WorldAtlas({ profile }: { profile: CareerProfile }) {
       eras.push(n.era);
       pts.push({ x: xy[0], y: xy[1], era: n.era, r: 3 + n.aiRelevance * 5 });
     }
-    const arcs: { d: string; from: Era; to: Era; id: string }[] = [];
+    const arcs: ArcDatum[] = [];
     for (let i = 1; i < proj.length; i++) {
       const [ax, ay] = proj[i - 1];
       const [bx, by] = proj[i];
@@ -62,7 +91,13 @@ export default function WorldAtlas({ profile }: { profile: CareerProfile }) {
       const len = Math.hypot(bx - ax, by - ay);
       const mx = (ax + bx) / 2;
       const my = (ay + by) / 2 - len * 0.3;
-      arcs.push({ d: `M${ax},${ay} Q${mx},${my} ${bx},${by}`, from: eras[i - 1], to: eras[i], id: `wa-arc-${i}` });
+      arcs.push({
+        d: `M${ax},${ay} Q${mx},${my} ${bx},${by}`,
+        from: eras[i - 1],
+        to: eras[i],
+        id: `wa-arc-${i}`,
+        srcIndex: i - 1,
+      });
     }
     return { points: pts, arcs };
   }, [profile]);
@@ -117,7 +152,7 @@ export default function WorldAtlas({ profile }: { profile: CareerProfile }) {
         viewBox={`0 0 ${W} ${H}`}
         className="us-map atlas-map"
         role="img"
-        aria-label="World career atlas"
+        aria-label="World career atlas — animated journey between roles"
         onWheel={onWheel}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
@@ -150,19 +185,50 @@ export default function WorldAtlas({ profile }: { profile: CareerProfile }) {
             })}
           </g>
 
-          <g className="us-arcs">
-            {arcs.map((arc) => (
-              <path key={arc.id} d={arc.d} stroke={`url(#${arc.id})`} vectorEffect="non-scaling-stroke" />
-            ))}
-          </g>
+          {/* Journey layer — remounts on playId change to replay the sequence. */}
+          <g key={`journey-${playId}`}>
+            <g className="atlas-journey">
+              {arcs.map((arc) => (
+                <motion.path
+                  key={arc.id}
+                  d={arc.d}
+                  stroke={`url(#${arc.id})`}
+                  vectorEffect="non-scaling-stroke"
+                  initial={{ pathLength: reduce ? 1 : 0 }}
+                  animate={{ pathLength: 1 }}
+                  transition={
+                    reduce
+                      ? { duration: 0 }
+                      : { delay: arc.srcIndex * STEP + DOT_POP * 0.5, duration: ARC_DUR, ease: 'easeInOut' }
+                  }
+                />
+              ))}
+            </g>
 
-          <g className="us-dots atlas-dots">
-            {points.map((p, i) => (
-              <g key={i} transform={`translate(${p.x},${p.y})`}>
-                <circle className="us-dot-halo" r={p.r * 2.2 * dotScale} fill={ERA_COLOR[p.era]} />
-                <circle r={p.r * dotScale} fill={ERA_COLOR[p.era]} />
-              </g>
-            ))}
+            <g className="us-dots atlas-dots">
+              {points.map((p, i) => {
+                const haloR = p.r * 2.2 * dotScale;
+                const dotR = p.r * dotScale;
+                const tr = reduce ? { duration: 0 } : { delay: i * STEP, duration: DOT_POP, ease: 'backOut' as const };
+                return (
+                  <g key={i} transform={`translate(${p.x},${p.y})`}>
+                    <motion.circle
+                      className="us-dot-halo"
+                      fill={ERA_COLOR[p.era]}
+                      initial={{ r: reduce ? haloR : 0 }}
+                      animate={{ r: haloR }}
+                      transition={tr}
+                    />
+                    <motion.circle
+                      fill={ERA_COLOR[p.era]}
+                      initial={{ r: reduce ? dotR : 0 }}
+                      animate={{ r: dotR }}
+                      transition={tr}
+                    />
+                  </g>
+                );
+              })}
+            </g>
           </g>
         </g>
       </svg>
@@ -171,6 +237,23 @@ export default function WorldAtlas({ profile }: { profile: CareerProfile }) {
         <button onClick={() => zoomBy(1.3)} aria-label="Zoom in">+</button>
         <button onClick={() => zoomBy(1 / 1.3)} aria-label="Zoom out">−</button>
       </div>
+
+      <button
+        className="atlas-replay"
+        onClick={() => setPlayId((n) => n + 1)}
+        aria-label="Replay the journey animation"
+      >
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path
+            d="M3 12a9 9 0 1 0 3-6.7M3 4v4h4"
+            stroke="currentColor"
+            strokeWidth="2.2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+        Replay journey
+      </button>
 
       {selected && (
         <aside className="country-card">
